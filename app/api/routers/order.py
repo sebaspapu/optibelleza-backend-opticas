@@ -131,16 +131,37 @@ async def create_order(order:schemas_order.OrderAdd,db: Session = Depends(get_db
     if not origin_matches_frontend(origin):
         await admin_signal()
 
-    # Create Stripe Checkout Session
+    # Create Stripe Checkout Session (ensure customer + metadata so webhook can find user_id)
     try:
-        checkout_session = stripe.checkout.Session.create(
-            payment_method_types=['card'],
-            line_items=line_items,
-            mode='payment',
-            success_url=f"{settings.frontend_base_url}/orders",
-            cancel_url=f"{settings.frontend_base_url}/checkout",
-        )
-        return {"checkout_url": checkout_session.url}
+        # Buscar o crear cliente en Stripe con metadata user_id
+        try:
+            customers = stripe.Customer.list(email=user_email.email, limit=1)
+            if customers.data:
+                customer = customers.data[0]
+            else:
+                customer = stripe.Customer.create(
+                    email=user_email.email,
+                    name=user_email.user_name,
+                    metadata={"user_id": str(id)}
+                )
+        except Exception as sc_err:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error creando/obteniendo customer en Stripe: {sc_err}")
+
+        try:
+            checkout_session = stripe.checkout.Session.create(
+                customer=customer.id,
+                payment_method_types=['card'],
+                line_items=line_items,
+                mode='payment',
+                success_url=f"{settings.frontend_base_url}/orders?session_id={{CHECKOUT_SESSION_ID}}",
+                cancel_url=f"{settings.frontend_base_url}/checkout",
+                metadata={"user_id": str(id)}
+            )
+            return {"checkout_url": checkout_session.url}
+        except Exception as e:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error creando sesión de Stripe: {e}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
