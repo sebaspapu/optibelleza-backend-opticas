@@ -27,7 +27,7 @@ class ShoesUpdate(BaseModel):
 
 class ProductSize(BaseModel):
     product_name:str
-    size:int
+    # size:int
 
 class Shoes(BaseModel):
 #class ProductMounts(BaseModel):

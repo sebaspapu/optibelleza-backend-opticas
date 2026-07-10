@@ -20,7 +20,7 @@ from app.core import oauth2
 import stripe
 from app.core.config import settings, origin_matches_frontend
 from typing import List
-from stripe import SignatureVerificationError
+from stripe.error import SignatureVerificationError
 from app.infra.email import send_order_notification
 
 logger = logging.getLogger("uvicorn.error")
@@ -34,7 +34,7 @@ logger.info(f"🔐 Stripe API key configurada: {stripe.api_key[:8]}********")
 
 
 # URL base para redirecciones después del pago
-YOUR_DOMAIN = settings.frontend_base_url or "http://localhost:3000"
+YOUR_DOMAIN = settings.frontend_base_url
 
 @router.post("/api/checkout/create-session")
 async def create_checkout_session(
@@ -105,7 +105,7 @@ async def create_checkout_session(
 
             line_items.append({
                 'price_data': {
-                    'currency': 'usd',
+                    'currency': 'cop',
                     'product_data': {
                         'name': product.name,
                         'images': [product.product_image] if product.product_image else [],
@@ -227,14 +227,51 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                 logger.info(f"💳 ID de sesión: {checkout_session.id}")
                 logger.info(f"💰 Estado del pago: {checkout_session.payment_status}")
 
-                # Obtener el user_id de los metadatos
-                user_id = int(checkout_session.metadata.get('user_id'))
+                # Obtener el user_id de los metadatos (manejo robusto)
+                user_id_raw = None
+                try:
+                    meta = getattr(checkout_session, 'metadata', None)
+                    if meta:
+                        # metadata puede ser dict-like o StripeObject
+                        try:
+                            user_id_raw = meta.get('user_id')
+                        except Exception:
+                            user_id_raw = getattr(meta, 'get', lambda k: None)('user_id') if hasattr(meta, 'get') else None
+                except Exception as me:
+                    logger.warning(f"No se pudo leer metadata de checkout_session: {me}")
+
+                # Fallback: intentar obtener user_id desde el customer metadata
+                if not user_id_raw:
+                    try:
+                        customer_ref = None
+                        try:
+                            customer_ref = checkout_session.get('customer') if isinstance(checkout_session, dict) else getattr(checkout_session, 'customer', None)
+                        except Exception:
+                            customer_ref = getattr(checkout_session, 'customer', None)
+
+                        if customer_ref:
+                            cust = stripe.Customer.retrieve(customer_ref)
+                            cm = getattr(cust, 'metadata', {}) or {}
+                            user_id_raw = cm.get('user_id')
+                            logger.info(f"Obtenido user_id desde customer metadata: {user_id_raw}")
+                    except Exception as ce:
+                        logger.warning(f"No se pudo obtener user_id desde customer: {ce}")
+
+                if not user_id_raw:
+                    logger.error("No se encontró user_id en checkout_session.metadata ni en customer.metadata")
+                    raise HTTPException(status_code=400, detail="Missing user_id in checkout session metadata")
+
+                try:
+                    user_id = int(user_id_raw)
+                except Exception as e:
+                    logger.error(f"user_id inválido en metadata: {user_id_raw} error: {e}")
+                    raise HTTPException(status_code=400, detail="Invalid user_id in checkout session metadata")
                 logger.info(f"👤 Usuario ID: {user_id}")
 
                 # Obtener los items del carrito
                 cart_items = db.query(models_cart.Cart).filter(models_cart.Cart.owner_id == user_id).all()
                 if not cart_items:
-                    logger.warning("⚠️ Advertencia: No se encontraron items en el carrito")
+                    logger.info("⚠️ Advertencia: No se encontraron items en el carrito")
 
                 # Crear la orden
                 logger.info("=== Procesando pago completado ===")
@@ -339,7 +376,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
                                     price=unit_price_dollars,
                                     paid_amount=paid_total,
                                     product_image="",
-                                    size=0,
+                                    # size=0,
                                     shoes_category="",
                                     order_status="paid",
                                     payment="stripe",

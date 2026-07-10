@@ -6,6 +6,7 @@ import os
 
 # Support Postgres (production) and a local SQLite fallback for demos/tests.
 # Use APP_ENV to decide: non-production -> sqlite, production -> postgres.
+print(f"DEBUG: settings.app_env is '{settings.app_env}'")
 if settings.app_env.lower() not in ("production", "prod"):
     # Development / local: use a local file-based sqlite database.
     db_path = settings.database_name or "./test2.db"
@@ -20,6 +21,8 @@ else:
     )
     engine = create_engine(SQLALCHEMY_DATABASE_URL, pool_size=10, max_overflow=20)
 
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
 def get_db():
     db = SessionLocal()
@@ -27,6 +30,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()

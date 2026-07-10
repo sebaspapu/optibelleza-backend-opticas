@@ -25,25 +25,25 @@ Usar pyenv (recomendado)
 pyenv local 3.11.9
 
 python -m venv .venv
+#o
+py -3.11 -m venv .venv
+
+
 # En Windows PowerShell:
 .venv\Scripts\Activate.ps1
 # En bash:
 source .venv/bin/activate
 ```
 
-### b) Ingresar a la carpeta app
-```bash
-cd .\app\
-```
-
-### c) Instalar dependencias
+### b) Instalar dependencias
 ```bash
 pip install -r requirements.txt
 ```
 
-### d) Ejecutar el backend
+### c) Ejecutar el backend
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
+
 ```
 - El backend quedará corriendo en: http://127.0.0.1:8000
 

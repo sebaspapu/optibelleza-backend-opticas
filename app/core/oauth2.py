@@ -68,7 +68,7 @@ def verify_access_token(token: str, credentials_exception):
             token_data = schemas.Token_data(id=user_id, role=role)
             return token_data
             
-        except jwt.JWTError as e:
+        except jwt.PyJWTError as e:
             # Error específico de JWT (token inválido, expirado, etc)
             raise credentials_exception
         except Exception as e:

@@ -8,13 +8,13 @@ class CartBase(BaseModel):
     product_name:str
     price:int
     product_quantity:int
-    size:int
+    # size:int
 
 class CartOut(BaseModel):
     product_name:str
     product_quantity:int
     price:int
-    size:int
+    # size:int
     product_image:str
     shoes_category:str
     class Config:
@@ -32,4 +32,4 @@ class CartIncresase(BaseModel):
 class CartAdd(BaseModel):
     id: int
     product_quantity:int
-    size:int
+    # size:int

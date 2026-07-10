@@ -39,11 +39,3 @@ print("hello")
 def is_running():
     return {"message": "🚀 Optibelleza API is running successfully!"}
 
-
-
-
-
-
-
-    
-    

@@ -17,7 +17,7 @@ class Orders(Base):
     price = Column(Integer, nullable=False)
     product_image = Column(Text, nullable=False)
     shoes_category = Column(String, nullable=False)
-    size = Column(Integer, nullable=False, server_default=text("9"))
+    # size = Column(Integer, nullable=False, server_default=text("9"))
     product_quantity = Column(Integer, nullable=False, server_default=text("1"))
     order_status = Column(String, nullable=False, server_default=text("'processing'"))
     payment = Column(String, nullable=False)

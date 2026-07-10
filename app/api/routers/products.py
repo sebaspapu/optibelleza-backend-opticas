@@ -10,6 +10,7 @@ from typing import List, Optional
 import base64
 from app.infra.websocket import websocket_connections,websocket_connections_admin
 import stripe
+from stripe.error import StripeError
 
 # Configurar Stripe
 stripe.api_key = settings.stripe_secret_key
@@ -27,6 +28,7 @@ s3 = boto3.client(
         aws_access_key_id=AWS_ACCESS_KEY or None,
         aws_secret_access_key=settings.aws_secret_key or None,
         region_name=AWS_REGION or None,
+
 )
 
 router=APIRouter()
@@ -48,10 +50,9 @@ async def client_signal():
 #CRUD
 
 # GET ALL PRODUCT MOUNTS (MORE COMPLETE WITH FILTERS)
-@router.get("/api/products", response_model=List[schemas.Shoes], tags=["Auth - User"])
+@router.get("/api/products", response_model=List[schemas.Shoes], tags=["Public"])
 def get_products_mounts_all(
     db: Session = Depends(get_db),
-    current_user: int = Depends(oauth2.get_current_user),
     category: Optional[str] = Query(None, description="Filtrar por categoría"),
     type: Optional[str] = Query(None, description="Filtrar por tipo (Featured/New)"),
     limit: int = Query(10, ge=1, le=100, description="Límite de resultados por página"),
@@ -67,8 +68,8 @@ def get_products_mounts_all(
     return products
 
 # GET TYPE=FEATURED (OPTIONAL)
-@router.get("/api/featured_product_mounts", response_model=List[schemas.Shoes], tags=["Auth - User"])
-def read(db: Session = Depends(get_db),current_user:int=Depends(oauth2.get_current_user)):
+@router.get("/api/featured_product_mounts", response_model=List[schemas.Shoes], tags=["Public"])
+def read(db: Session = Depends(get_db)):
      
     product_mounts_list = db.query(product_models.Shoes).filter(product_models.Shoes.shoes_type=="Featured").all()
 
@@ -76,8 +77,8 @@ def read(db: Session = Depends(get_db),current_user:int=Depends(oauth2.get_curre
     return product_mounts_list
 
 # GET TYPE=NEW (OPTIONAL)
-@router.get("/api/new_product_mounts", response_model=List[schemas.Shoes], tags=["Auth - User"])
-def read(db: Session = Depends(get_db),current_user:int=Depends(oauth2.get_current_user)):
+@router.get("/api/new_product_mounts", response_model=List[schemas.Shoes], tags=["Public"])
+def read(db: Session = Depends(get_db)):
      
     product_mounts_list = db.query(product_models.Shoes).filter(product_models.Shoes.shoes_type=="New").all()
    
@@ -86,8 +87,8 @@ def read(db: Session = Depends(get_db),current_user:int=Depends(oauth2.get_curre
 
 # GET A PRODUCT MOUNTS BY ID
 #@router.get("/get_post/{id}",response_model=schemas.Shoes)
-@router.get("/api/products/{id}",response_model=schemas.Shoes, tags=["Auth - User"])
-def get_product_mount_by_id(id:int,db: Session = Depends(get_db),current_user:int=Depends(oauth2.get_current_user)):
+@router.get("/api/products/{id}",response_model=schemas.Shoes, tags=["Public"])
+def get_product_mount_by_id(id:int,db: Session = Depends(get_db)):
     #posts=db.execute(text("SELECT * FROM POSTS WHERE id=:id"),{"id":id})
     product_mount_by_id=db.query(product_models.Shoes).filter(product_models.Shoes.id==id).first()
     if product_mount_by_id==None:
@@ -103,7 +104,7 @@ async def create_product_mounts(shoes:schemas.ShoesCreate,db: Session = Depends(
         # 1️⃣ Verificar si el producto ya existe en la base de datos
         existing_db_shoe = db.query(product_models.Shoes).filter(product_models.Shoes.name == shoes.name).first()
         if existing_db_shoe:
-            print(f"⚠️ Producto '{shoes.name}' ya existe en la base de datos.")
+            print(f"Producto '{shoes.name}' ya existe en la base de datos.")
             return existing_db_shoe
 
         # 2️⃣ Buscar si ya existe en Stripe (por nombre)
@@ -112,7 +113,7 @@ async def create_product_mounts(shoes:schemas.ShoesCreate,db: Session = Depends(
         for p in existing_products.data:
             if p.name.lower() == shoes.name.lower():
                 stripe_product = p
-                print(f"⚠️ Producto ya existe en Stripe: {p.id}")
+                print(f"Producto ya existe en Stripe: {p.id}")
                 break
 
         # 3️⃣ Si no existe en Stripe, crear uno nuevo
@@ -126,20 +127,20 @@ async def create_product_mounts(shoes:schemas.ShoesCreate,db: Session = Depends(
                     'type': shoes.shoes_type
                 }
             )
-            print(f"✅ Producto creado en Stripe: {stripe_product.id}")
+            print(f"Producto creado en Stripe: {stripe_product.id}")
 
         # 4️⃣ Verificar si ya hay un precio existente en Stripe
         prices = stripe.Price.list(product=stripe_product.id)
         if prices.data:
             stripe_price = prices.data[0]
-            print(f"⚠️ Precio existente reutilizado: {stripe_price.id}")
+            print(f"Precio existente reutilizado: {stripe_price.id}")
         else:
             stripe_price = stripe.Price.create(
                 product=stripe_product.id,
                 unit_amount=int(shoes.price * 100),  # Stripe usa centavos
-                currency='usd'
+                currency='cop'
             )
-            print(f"✅ Nuevo precio creado en Stripe: {stripe_price.id}")
+            print(f"Nuevo precio creado en Stripe: {stripe_price.id}")
 
         # 5️⃣ Registrar en base de datos
         new_shoes = product_models.Shoes(
@@ -156,8 +157,8 @@ async def create_product_mounts(shoes:schemas.ShoesCreate,db: Session = Depends(
 
         return new_shoes
 
-    except stripe.StripeError as e:
-        print(f"❌ Error creando producto en Stripe: {str(e)}")
+    except StripeError as e:
+        print(f"Error creando producto en Stripe: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error con Stripe: {str(e)}"
@@ -180,16 +181,16 @@ async def update_product_mount_by_id(id:int,post:schemas.ShoesUpdate,db: Session
         print("\n=== Actualizando producto en Stripe ===")
         # Si el precio ha cambiado, crear un nuevo precio en Stripe
         if hasattr(post, 'price') and shoes.price != post.price:
-            print(f"💰 Precio actualizado de ${shoes.price} a ${post.price}")
+            print(f"Precio actualizado de ${shoes.price} a ${post.price}")
             # Crear nuevo precio en Stripe
             new_stripe_price = stripe.Price.create(
                 product=shoes.stripe_product_id,
                 unit_amount=int(post.price * 100),
-                currency='usd'
+                currency='cop'
             )
             # Actualizar el ID del precio en nuestro modelo
             post.stripe_price_id = new_stripe_price.id
-            print(f"✅ Nuevo precio creado en Stripe: {new_stripe_price.id}")
+            print(f"Nuevo precio creado en Stripe: {new_stripe_price.id}")
         
         # Actualizar el producto en Stripe
         stripe.Product.modify(
@@ -202,7 +203,7 @@ async def update_product_mount_by_id(id:int,post:schemas.ShoesUpdate,db: Session
                 'type': post.shoes_type if hasattr(post, 'shoes_type') else shoes.shoes_type
             }
         )
-        print(f"✅ Producto actualizado en Stripe: {shoes.stripe_product_id}")
+        print(f"Producto actualizado en Stripe: {shoes.stripe_product_id}")
         
         # Actualizar el carrito si es necesario
         if cart_query.first()!=None:
@@ -217,8 +218,8 @@ async def update_product_mount_by_id(id:int,post:schemas.ShoesUpdate,db: Session
         
         return {"data":"success"}
         
-    except stripe.StripeError as e:
-        print(f"❌ Error actualizando producto en Stripe: {str(e)}")
+    except StripeError as e:
+        print(f"Error actualizando producto en Stripe: {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

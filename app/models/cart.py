@@ -12,7 +12,7 @@ class Cart(Base):
     owner_email = Column(String, nullable=False)
     product_name = Column(String, nullable=False)
     price = Column(Integer, nullable=False)
-    size = Column(Integer, nullable=False, server_default=text("9"))
+    # size = Column(Integer, nullable=False, server_default=text("9"))
     product_image = Column(Text, nullable=False)
     shoes_category = Column(String, nullable=False)
     product_quantity = Column(Integer, nullable=False, server_default=text("1"))
